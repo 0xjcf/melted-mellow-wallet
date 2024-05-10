@@ -17,7 +17,6 @@ describe("SendTokenForm", () => {
       context: {},
     });
     render(<SendTokenForm />);
-    screen.debug();
     expect(screen.getByText("Loading Address...")).toBeInTheDocument();
   });
 
@@ -28,7 +27,6 @@ describe("SendTokenForm", () => {
       context: {},
     });
     render(<SendTokenForm />);
-    screen.debug();
     expect(screen.getByText("Loading Wallet Settings...")).toBeInTheDocument();
   });
 
