@@ -1,28 +1,24 @@
-import { Address, createPublicClient, createWalletClient } from "viem";
+import { Address, WalletClient, PublicClient } from "viem";
 
-export type WalletClient = Awaited<ReturnType<typeof createWalletClient>>;
-export type PublicClient = Awaited<ReturnType<typeof createPublicClient>>;
+
 
 export type SubmitTransactionInput = {
   address: Address;
   toAddress: Address;
   amount: number;
   decimals: number;
-  walletClient: WalletClient &
-    PublicClient & {
-      writeContract: WalletClient["writeContract"];
-    };
+  walletClient: WalletClient
 };
 
 export type GetBalanceInput = {
   address: Address;
   decimals: number;
-  walletClient: WalletClient & PublicClient;
+  walletClient: PublicClient;
 };
 
 export type WaitForTxReceiptInput = {
   transactionId: Address;
-  walletClient: WalletClient & PublicClient;
+  walletClient: PublicClient;
 };
 
 export type SendToMachineContext = {

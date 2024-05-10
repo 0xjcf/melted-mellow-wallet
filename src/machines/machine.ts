@@ -8,6 +8,8 @@ import {
   parseUnits,
   Address,
   EIP1193Provider,
+  WalletClient,
+  PublicClient
 } from "viem";
 
 import { avalancheFuji } from "viem/chains";
@@ -18,8 +20,6 @@ import type {
   SendToMachineEvents,
   GetBalanceInput,
   SubmitTransactionInput,
-  WalletClient,
-  PublicClient,
   WaitForTxReceiptInput,
 } from "../types/types";
 
@@ -59,7 +59,7 @@ const machine = setup({
       async ({
         input,
       }: {
-        input: { walletClient: WalletClient & PublicClient };
+        input: { walletClient: WalletClient };
       }) => {
         const [address] = await input.walletClient.getAddresses();
         console.log(address);
