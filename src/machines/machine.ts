@@ -17,12 +17,10 @@ import type {
   SendToMachineEvents,
   GetBalanceInput,
   SubmitTransactionInput,
+  WalletClient,
+  PublicClient,
+  WaitForTxReceiptInput,
 } from "../types/types";
-
-const walletClient = createWalletClient({
-  chain: avalancheFuji,
-  transport: custom(window.ethereum!),
-}).extend(publicActions);
 
 const usdcContractAddress = "0x5425890298aed601595a70AB815c96711a31Bc65";
 
@@ -34,30 +32,51 @@ const machine = setup({
     input: {} as {
       address: Address;
       toAddress: Address;
+      walletClient: WalletClient;
     },
   },
 
   actors: {
-    getAddress: fromPromise(async () => {
-      const [address] = await walletClient.getAddresses();
+    createWalletClient: fromPromise(async () => {
+      if (!window.ethereum) {
+        throw new Error("Something went wrong connecting to wallet");
+      }
 
-      return address;
+      const walletClient = createWalletClient({
+        chain: avalancheFuji,
+        transport: custom(window.ethereum!),
+      }).extend(publicActions);
+
+      return walletClient;
     }),
 
-    getDecimals: fromPromise(async () => {
-      const contract = getContract({
-        address: usdcContractAddress,
-        abi,
-        client: walletClient,
-      });
+    getAddress: fromPromise(
+      async ({
+        input,
+      }: {
+        input: { walletClient: WalletClient & PublicClient };
+      }) => {
+        const [address] = await input.walletClient.getAddresses();
+        return address;
+      }
+    ),
 
-      const decimals = await contract.read.decimals();
+    getDecimals: fromPromise(
+      async ({ input }: { input: { walletClient: WalletClient } }) => {
+        const contract = getContract({
+          address: usdcContractAddress,
+          abi,
+          client: input.walletClient,
+        });
 
-      return decimals as number;
-    }),
+        const decimals = await contract.read.decimals();
+
+        return decimals as number;
+      }
+    ),
 
     getBalance: fromPromise(async ({ input }: { input: GetBalanceInput }) => {
-      const rawBalance = (await walletClient.readContract({
+      const rawBalance = (await input.walletClient.readContract({
         address: usdcContractAddress,
         abi,
         functionName: "balanceOf",
@@ -75,12 +94,13 @@ const machine = setup({
         const amount = parseUnits(input.amount.toString(), input.decimals);
 
         try {
-          const hash = await walletClient.writeContract({
+          const hash = await input.walletClient.writeContract({
             address: usdcContractAddress,
             abi,
             functionName: "transfer",
             args: [input.toAddress, amount],
             account: input.address,
+            chain: avalancheFuji,
           });
 
           return hash;
@@ -93,12 +113,10 @@ const machine = setup({
     ),
 
     waitForTxReceipt: fromPromise(
-      async ({ input }: { input: { transactionId: Address } }) => {
-        const transaction = await walletClient.waitForTransactionReceipt({
+      async ({ input }: { input: WaitForTxReceiptInput }) => {
+        const transaction = await input.walletClient.waitForTransactionReceipt({
           hash: input.transactionId,
         });
-
-        console.log(transaction);
 
         return transaction;
       }
@@ -121,7 +139,6 @@ const machine = setup({
     },
   },
 }).createMachine({
-  /** @xstate-layout N4IgpgJg5mDOIC5QBcBOBDAdrdBjZAlgPaYBiRqAtgHQDu6ANg2MgMQQljWzLrJdosOfMTIUa9JiwDaABgC6iUAAcisAoRJKQAD0QB2WQE5q+gEwA2AKxGrARjNGAHFYtmANCACeBgCx3qWSt7Yycnc1c7AF8oz0FsPE0xKjpGZmRqGGQAQQgIVDhYdk5qAkwANyIAawEMBJESchTJdMyWXPzChDLK3D5ROXlB7VV1JO09BDN9X2orQ2nF2VlfVd9PHwR-C2ojfQsjOxcrMyc7fRi4uuEkpok0ljacvILYIrBUVApqZQY+ADNxNR4jdRHdUlIMlkOq9YN0KkQ+klBsMkCBRhpRBNEE4PN5EHZZPoAMzUCzE4lmXxmOzE-S4imXEAgxJgoEtR5ZABCjCwuDAxUwXB61VqQlZjXZDyhLB5f0w-PhvX6JBRChGakxWjRk0c+jJvichuOK1cFg2OIssl2xOWTiM1n2VLMTJZDWS90hTzlfIFHy+qB+f2QgJSbtuUq93N5CrASsRKswasUaIx4x1iD1BqNYWCpos5vxCFss2JTkprisdMsxld1wlHtKmGUAFc2LAWwAjSgaVEqTXp0CTQmnahl3wO-RGakzWROC0ISk7U7Eix2PZHWlOCx18Xu8FlVsZdAvQqsQ9t4FEGGFPvogdYjMIM6zCe+KxOYzE9-6E4L8lONQhLrquS76PsTi7vUEYpBex6UEQLaYGwcHUOgCFIcgd5po+Q44lS1A1kcljhFWhoLlOgFBFYxhmJSU72FYUGgpKKTlIwBAQHwAocEK3C8PwwL1vuQLsQwnHcdhD7anhCDnLahG4rYVrEuc9J4psdhmrsYTEicFjmBYE7MQ24JiRJ-CsB23a9uqqbSZg2JyVO+puHOhh2L4FjbmYGkEmWuxGEFexvp5FyxMywkwTQ5lcYJJ6dG857NpeyDXqebxSWMuG6ASH47EYshUssshrhSVgLpYsxFcsoFEjS3kmSJbEcXFXAJbCpSwLIOg3klWVao5T5bjsBb+DYXlVvaxILic1UUnOVjvr4siEkYTXRdQsXcWhGWwF1PV9UU0h2Cm-bZTJuVyWWo1GVp07WGWRgzUWRmAdOexruWBzLExEXhmyLXiW1u2JftBCwNSADCAAW6CoEdrADYOV3nL4pLnOuaxhJYlgLl5AS+CS8leeBdjWH9Vx7pt23xXtXXQ3DCN7Ujp0ahdQ2yWjGP6Fjqw424habDR+pE6pYSGWcpyU5F1OAzFrU7ehiHIclR5oRhyHIzlw4TUBBnhHRU7UkaFGfrsRWFZ+8xEq4G3y1tivxZrGS4DDYC4FUSN2edg1ObSxImFWhxmCcjgfjMC4ltQLhWmV65mKt63-VFDu0+1LvUG7HteydZ33hz-sUkHgcOGHtjhOsRaEssMeuESjpKWc9usTQ1k9mwvHCgiNRCXLrfcF2HfxkiAwKNrl3Do4Y5UmWkTk3s5YLuuvNAf4hqhy4NK4i3jaCJ7grd5UvcAwP+9VCPibJuzftPraAREi+hUkvY5hV5pJKzAHieWM93nk7vcEXdWA6B4Erf4-BUAAApbTLAAJSsFPo2LuE9OZXTCAEcwLhnrOF5mWPyck7BEJ0vfCa-M-oRUwEQCAcBtBILuDfFGkwAC0VJZqE2CtOLSr8JwOkAZGdIjCdaZnfogSkJgiYHFnkZImc5+HNGlE8I6QjJ4GAIUtUk6Nlj7GcDSBw4UqbQQdhyGUyAfSxhUWgyYewo5aTJBSOiq5K64l8PIz0rQOy4H5G8SxTlJGERfqtQkhhrC2AXBgskZozh7CCvJNxEJWj+goL4p8XlSTTD0kEokpUbAVSLEYSw9jKRi1xG-ZOhiWKNhMdQJJgZoR7RSbJewAQMk0SIdk0JeTNL1SKb5MK30XQp37lUxRtTvQxn5I0q6zSAmZPaSE3Jy9VpfwcXOCuqlqTxLglMyY+wdhvg-F+H8f4ix5jJEnGuFJfxeS2SlY8DT7KFyfEaKw1AVpzlWLIVSBT6QUUDnMPMlEiSFTpLc9WytMI7JxETQIVo9iuETnpOi4SgpzDnHRQ5z8d5DKMQPdOULCHvjmM9csJIjKR2rvsOYidVrLE8ljAxstcWNnTqDWEBKiHPWJWWOkq4iaiMXDCsW5xF7lnRjuHFlSzJO3avTCGh0Hm+yYQSKkAQbA8rJfy-85JTA2FCc9VcvlylMqlaJGVbLCgMzMLDeGyjHm3y5gi3Ynk6IARJN+WavlFK2m3AyKsJx4mso6pazx3j4D2uVXJac+obZ9IMjVaY+Nvy7GJiScwVVnqBvNcGt4NTPjJIjcIqNMLY0NQWEVfQ2qzC7EsEuK0RV7QSoqaZM1wMlYuw5SBblpK+UUs2NuUs9dGL4KKjLehraLIZxVq7d2nsOWqu7by8lArbBB18sTVYicDKuMlS2oGk6NbTsHl4woHKqxquBatbycdyZR3sHXK04FywOCpE2k1e6FZtudke2pZ7VJoqnFe7cpVb3VyKtW9FhgXzzAevE9uGgCXgRMBsw4RVqxaqLInWkhFeHeW+XsYk8Tz4EoMsvQwJhyTFILCSApRD4ldwJfaV5v5nAGT0jYddy9SaEXJBOQOBTnDnBiDEIAA */
   context: {
     amount: 0,
     address: "" as Address,
@@ -132,6 +149,7 @@ const machine = setup({
     transactionId: "",
     balance: 0,
     decimals: 0,
+    walletClient: {} as WalletClient & PublicClient,
   },
 
   id: "transactionForm",
@@ -140,12 +158,31 @@ const machine = setup({
 
   states: {
     wallet: {
-      initial: "getAddress",
+      initial: "createWalletClient",
 
       states: {
+        createWalletClient: {
+          invoke: {
+            src: "createWalletClient",
+            onDone: {
+              target: "getAddress",
+              actions: assign({
+                walletClient: ({ event }) => event.output,
+              }),
+            },
+            onError: {
+              target: "error.createWalletClient",
+              actions: assign({
+                walletError: "Could not connect to wallet",
+              }),
+            },
+          },
+        },
+
         getAddress: {
           invoke: {
             src: "getAddress",
+            input: ({ context }) => ({ walletClient: context.walletClient }),
             onDone: {
               target: "getDecimals",
               actions: assign({
@@ -164,6 +201,7 @@ const machine = setup({
         getDecimals: {
           invoke: {
             src: "getDecimals",
+            input: ({ context }) => ({ walletClient: context.walletClient }),
             onDone: {
               target: "getBalance",
               actions: assign({
@@ -179,6 +217,7 @@ const machine = setup({
             input: ({ context }) => ({
               address: context.address,
               decimals: context.decimals,
+              walletClient: context.walletClient,
             }),
             onDone: {
               target: "success",
@@ -204,6 +243,7 @@ const machine = setup({
           states: {
             getAddress: {},
             getBalance: {},
+            createWalletClient: {},
           },
         },
       },
@@ -358,6 +398,7 @@ const machine = setup({
           toAddress: context.toAddress,
           amount: context.amount,
           decimals: context.decimals,
+          walletClient: context.walletClient,
         }),
         onDone: {
           target: "waitForTxReceipt",
@@ -381,6 +422,7 @@ const machine = setup({
         src: "waitForTxReceipt",
         input: ({ context }) => ({
           transactionId: context.transactionId as Address,
+          walletClient: context.walletClient,
         }),
         onDone: {
           target: "done",
