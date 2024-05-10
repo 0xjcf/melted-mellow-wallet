@@ -7,6 +7,7 @@ import {
   publicActions,
   parseUnits,
   Address,
+  EIP1193Provider,
 } from "viem";
 
 import { avalancheFuji } from "viem/chains";
@@ -38,13 +39,17 @@ const machine = setup({
 
   actors: {
     createWalletClient: fromPromise(async () => {
-      if (!window.ethereum) {
-        throw new Error("Something went wrong connecting to wallet");
-      }
+      const noopProvider = {
+        request: () => null,
+      } as unknown as EIP1193Provider;
+
+      const provider =
+        typeof window !== "undefined" ? window.ethereum! : noopProvider;
 
       const walletClient = createWalletClient({
         chain: avalancheFuji,
-        transport: custom(window.ethereum!),
+
+        transport: custom(provider),
       }).extend(publicActions);
 
       return walletClient;
@@ -57,6 +62,7 @@ const machine = setup({
         input: { walletClient: WalletClient & PublicClient };
       }) => {
         const [address] = await input.walletClient.getAddresses();
+        console.log(address);
         return address;
       }
     ),
