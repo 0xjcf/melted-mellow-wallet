@@ -1,7 +1,5 @@
 import { Address, WalletClient, PublicClient } from "viem";
 
-
-
 export type SubmitTransactionInput = {
   address: Address;
   toAddress: Address;

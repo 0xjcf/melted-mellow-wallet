@@ -9,7 +9,7 @@ import {
   Address,
   EIP1193Provider,
   WalletClient,
-  PublicClient
+  PublicClient,
 } from "viem";
 
 import { avalancheFuji } from "viem/chains";
@@ -56,13 +56,9 @@ const machine = setup({
     }),
 
     getAddress: fromPromise(
-      async ({
-        input,
-      }: {
-        input: { walletClient: WalletClient };
-      }) => {
+      async ({ input }: { input: { walletClient: WalletClient } }) => {
         const [address] = await input.walletClient.getAddresses();
-        console.log(address);
+
         return address;
       }
     ),
